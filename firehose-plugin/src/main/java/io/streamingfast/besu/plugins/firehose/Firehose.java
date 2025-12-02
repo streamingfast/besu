@@ -5,6 +5,8 @@ import java.io.OutputStream;
 import java.util.Base64;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.hyperledger.besu.plugin.data.PropagatedBlockContext;
+
 
 /**
  * Firehose handles output in Firehose protocol format to stdout.
@@ -77,7 +79,11 @@ public class Firehose {
      * Print a block in Firehose protocol format.
      * TODO: Implement with proper protobuf marshaling
      */
-    public void printBlockToFirehose(long blockNum, String blockHash, long timestamp) {
+    public void printBlockToFirehose(PropagatedBlockContext propagatedBlockContext) {
+        long blockNum = propagatedBlockContext.getBlockHeader().getNumber();
+        String blockHash = propagatedBlockContext.getBlockHeader().getBlockHash().toString();
+        long timestamp = propagatedBlockContext.getBlockHeader().getTimestamp();
+
         // Previous block info
         String previousHash = "0x" + "0".repeat(64); // Default for genesis block
         long previousNum = 0;

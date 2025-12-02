@@ -1,2 +1,10 @@
-rootProject.name = 'besu-firehose-plugin'
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            url = uri('https://raw.githubusercontent.com/Consensys/besu-plugin-gradle-plugin-artifacts/main')
+        }
+    }
+}
 
+rootProject.name = 'besu-firehose-plugin'

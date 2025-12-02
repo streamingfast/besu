@@ -1,7 +1,7 @@
 package io.streamingfast.besu.plugins.firehose;
 
-import org.hyperledger.besu.plugin.BesuContext;
 import org.hyperledger.besu.plugin.BesuPlugin;
+import org.hyperledger.besu.plugin.ServiceManager;
 import org.hyperledger.besu.plugin.data.PropagatedBlockContext;
 import org.hyperledger.besu.plugin.services.BesuEvents;
 
@@ -25,19 +25,37 @@ public class FirehosePlugin implements BesuPlugin {
     return Optional.of("Firehose");
   }
 
-  private BesuContext context;
+  private ServiceManager serviceManager;
+  private Firehose firehose;
 
   @Override
-  public void register(final BesuContext context) {
+  public void register(final ServiceManager context) {
     LOG.info("Registering Firehose Plugin");
-    this.context = context;
+    this.serviceManager = context;
+    this.firehose = new Firehose();
+  }
+
+  @Override
+  public void beforeExternalServices() {
+    LOG.info("Preparing plugin before external services start");
+  }
+
+  @Override
+  public java.util.concurrent.CompletableFuture<Void> reloadConfiguration() {
+    LOG.info("Reloading plugin configuration");
+    return java.util.concurrent.CompletableFuture.completedFuture(null);
+  }
+
+  @Override
+  public String getVersion() {
+    return "1.0.0";
   }
 
   @Override
   public void start() {
     LOG.info("Firehose plugin initialized");
-    printToFirehose("INIT", "Firehose plugin initialized");
-    context
+    firehose.onBlockchainInit();
+    serviceManager
         .getService(BesuEvents.class)
         .ifPresentOrElse(this::startEvents, () -> LOG.error("Could not obtain BesuEvents"));
   }
@@ -45,7 +63,7 @@ public class FirehosePlugin implements BesuPlugin {
   @Override
   public void stop() {
     LOG.info("Stopping Firehose Plugin");
-    context
+    serviceManager
         .getService(BesuEvents.class)
         .ifPresentOrElse(this::stopEvents, () -> LOG.error("Could not obtain BesuEvents"));
   }
@@ -66,83 +84,7 @@ public class FirehosePlugin implements BesuPlugin {
 
   private void onBlockPropagated(final PropagatedBlockContext propagatedBlockContext) {
     // Output in Firehose format
-    printBlockToFirehose(propagatedBlockContext);
+    firehose.printBlockToFirehose(propagatedBlockContext);
   }
 
-  // Firehose output methods (adapted from Go implementation)
-
-  /**
-   * printToFirehose is an easy way to print to Firehose format, it essentially
-   * adds the "FIRE" prefix to the input and joins the input with spaces as well
-   * as adding a newline at the end.
-   */
-  private void printToFirehose(String... input) {
-    String message = "FIRE " + String.join(" ", input) + "\n";
-    flushToFirehose(message.getBytes());
-  }
-
-  /**
-   * flushToFirehose sends data to Firehose via stdout with error handling and retrying.
-   */
-  private void flushToFirehose(byte[] data) {
-    OutputStream writer = System.out;
-    int written = 0;
-    int loops = 10;
-
-    for (int i = 0; i < loops; i++) {
-      try {
-        writer.write(data, written, data.length - written);
-        writer.flush();
-        return; // Success
-      } catch (IOException e) {
-        written += data.length - (data.length - written); // This is simplified
-        if (i == loops - 1) {
-          String errstr = String.format("\nFIREHOSE FAILED WRITING %dx: %s\n", loops, e.getMessage());
-          System.err.println(errstr);
-          // In Go version, it writes to /tmp/firehose_writer_failed_print.log
-          // You might want to add file logging here if needed
-          break;
-        }
-      }
-    }
-  }
-
-  /**
-   * printBlockToFirehose formats and prints a block in Firehose protocol format.
-   * Adapted for Besu plugin context - you'll need to fill in the protobuf marshaling.
-   */
-  private void printBlockToFirehose(PropagatedBlockContext propagatedBlockContext) {
-    long blockNum = propagatedBlockContext.getBlockHeader().getNumber();
-    String blockHash = propagatedBlockContext.getBlockHeader().getHash().toString();
-    long timestamp = propagatedBlockContext.getBlockHeader().getTimestamp();
-
-    // Previous block info
-    String previousHash = "0x" + "0".repeat(64); // Default for genesis block
-    long previousNum = 0;
-
-    if (blockNum > 0) {
-      previousNum = blockNum - 1;
-      // You'll need to get the parent hash from the block header
-      // previousHash = propagatedBlockContext.getBlockHeader().getParentHash().toString();
-    }
-
-    // LIB (Last Irreversible Block) - simplified logic
-    long libNum = 0;
-    if (blockNum >= 200) {
-      libNum = blockNum - 200;
-    }
-
-    // TODO: Marshal block to protobuf and base64 encode
-    // For now, just outputting the basic format
-    String header = String.format("FIRE BLOCK %d %s %d %s %d %d ",
-                                  blockNum, blockHash, previousNum, previousHash, libNum, timestamp);
-
-    // TODO: Add base64 encoded protobuf block data here
-    // String base64Block = Base64.getEncoder().encodeToString(marshalledBlock);
-    // header += base64Block;
-
-    header += "\n";
-
-    flushToFirehose(header.getBytes());
-  }
 }
